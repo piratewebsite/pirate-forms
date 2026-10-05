@@ -1,13 +1,21 @@
 ---
 // A form that posts to the forms receiver. It is a plain HTML form first: without script the
 // browser posts it and lands on a thank-you page; with script it is sent in place and the
-// result is shown under the button. Who receives it is decided on the receiver, by `id`.
+// result is shown under the button. Who receives it is decided on the receiver, by `id`,
+// or named by the site itself with `recipient`, which is sealed so the page never shows it.
 import Field from "./Field.astro";
+import { sealRecipient } from "./seal";
 import type { FieldProps } from "./types";
 
 interface Props {
-  /** The form's id in the receiver's forms.json. */
-  id: string;
+  /** The form's id on the receiver. Optional when `recipient` is given. */
+  id?: string;
+  /**
+   * The address that should receive this form, for a site that is not registered on the
+   * receiver. It is sealed at build time and never appears in the page; the receiver asks
+   * the address to confirm by email before it delivers anything.
+   */
+  recipient?: string;
   /** Receiver address. Defaults to the PUBLIC_FORMS_ENDPOINT env variable, then forms.piratesocial.app. */
   endpoint?: string;
   /** Fields as data. Fields can also be written as children; both can be used together. */
@@ -30,6 +38,7 @@ interface Props {
 
 const {
   id,
+  recipient,
   endpoint = import.meta.env.PUBLIC_FORMS_ENDPOINT ?? "https://forms.piratesocial.app",
   fields = [],
   submitLabel = "Send",
@@ -44,7 +53,11 @@ const {
   ...rest
 } = Astro.props;
 
-const action = `${String(endpoint).replace(/\/+$/, "")}/f/${encodeURIComponent(id)}`;
+// Sites that name their own recipient share one form on the receiver.
+const formId = id ?? (recipient ? "inbox" : undefined);
+if (!formId) throw new Error("pirate-forms: <Form> needs an id, or a recipient");
+const sealedRecipient = recipient ? await sealRecipient(recipient, import.meta.env.PUBLIC_FORMS_KEY) : undefined;
+const action = `${String(endpoint).replace(/\/+$/, "")}/f/${encodeURIComponent(formId)}`;
 ---
 
 <form
@@ -66,6 +79,7 @@ const action = `${String(endpoint).replace(/\/+$/, "")}/f/${encodeURIComponent(i
   <div class="pf-hp" aria-hidden="true">
     <label>Leave this field empty <input type="text" name="contact_me_by_fax_only" tabindex="-1" autocomplete="off" /></label>
   </div>
+  {sealedRecipient && <input type="hidden" name="_to" value={sealedRecipient} />}
   {redirect && <input type="hidden" name="_redirect" value={redirect} />}
   {turnstileSiteKey && <div class="cf-turnstile" data-sitekey={turnstileSiteKey} />}
   <div class="pf-actions">

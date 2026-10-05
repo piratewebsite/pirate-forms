@@ -1,6 +1,6 @@
 {
   "name": "pirate-forms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Astro form components for static sites, and a contact form plugin for the pirate theme. Forms post to a forms receiver that emails each submission.",
   "type": "module",
   "exports": {

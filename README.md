@@ -8,8 +8,14 @@ without script. The form posts to a forms receiver, a separate service that stor
 submission and emails it to the site's owner. Who receives a form is decided on the
 receiver, never in the page, so no email address appears in a site's HTML.
 
-A form only works once it is registered on the receiver: each site gets a form ID, and
-the receiver accepts that ID only from that site's address.
+There are two ways to say who receives a form:
+
+- **`recipient`**: the site names the address itself. It is sealed at build time, so the
+  page carries only ciphertext, and the receiver emails that address a confirmation link
+  the first time. Nothing is delivered until the address confirms; messages sent in the
+  meantime are kept and delivered afterwards.
+- **`id`**: the form is registered on the receiver by its operator, with the recipient
+  kept there. The receiver accepts that ID only from that site's address.
 
 ## Using it on a site
 
@@ -25,7 +31,7 @@ Write the fields as children:
 ---
 import { Form, Field } from "pirate-forms";
 ---
-<Form id="pirate-contact" fallbackEmail="hello@example.org">
+<Form recipient="you@example.org">
   <Field name="name" required />
   <Field name="email" type="email" required help="Only used to reply to you." />
   <Field name="topic" type="select" placeholder="Pick one" options={["Booking", "Press", "Other"]} />
@@ -40,13 +46,22 @@ Or as data:
   fields={[{ name: "name" }, { name: "email", type: "email", required: true }]} />
 ```
 
-`id` is the form ID the site was given on the receiver.
+With `id` instead of `recipient`, the form uses the ID the site was given on the receiver:
+
+```astro
+<Form id="pirate-contact"> ... </Form>
+```
+
+The address given as `recipient` is in your source (and so in your repository), just not in
+the built page. To keep it out of the source too, seal it once with `sealRecipient()` and
+use the result, which starts with `v1.`, as the `recipient`.
 
 ### Form props
 
 | Prop | Default | What it does |
 |---|---|---|
-| `id` | required | The form's id on the receiver |
+| `recipient` | none | The address that receives the form; sealed in the page, confirmed by email |
+| `id` | `inbox` with `recipient`, otherwise required | The form's id on the receiver |
 | `endpoint` | `PUBLIC_FORMS_ENDPOINT`, then `https://forms.piratesocial.app` | Receiver address |
 | `fields` | none | Fields as an array of `Field` props |
 | `submitLabel`, `sendingLabel` | "Send", "Sending…" | Button text |
