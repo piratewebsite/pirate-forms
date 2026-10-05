@@ -1,0 +1,77 @@
+---
+// One form field: its label, the control, and optional help text. `type` picks the control;
+// anything not listed in FieldProps is passed straight onto the control (min, pattern, ...).
+import { nextId } from "./uid";
+import type { FieldProps } from "./types";
+
+type Props = FieldProps;
+
+const { name, type = "text", label, required = false, placeholder, value, options = [], help, rows = 5, class: className, ...rest } = Astro.props;
+
+const text = label ?? (name.replace(/[_-]+/g, " ").trim().replace(/^./, (c) => c.toUpperCase()) || name);
+const id = `pf-${name.replace(/[^\w-]+/g, "-")}-${nextId()}`;
+const helpId = help ? `${id}-help` : undefined;
+const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : { value: o.value, label: o.label ?? o.value }));
+const values = value == null ? [] : (Array.isArray(value) ? value : [value]).map(String);
+// Lets browsers offer the visitor's own details without each site having to ask for it.
+const autocomplete = { email: "email", tel: "tel", url: "url" }[type as string] ?? (name === "name" ? "name" : undefined);
+// A fresh copy per option: Astro adds its scoping class to the object it is handed, and reusing one piles the class up.
+const optionAttrs = () => ({ ...rest });
+---
+
+{type === "hidden" ? (
+  <input type="hidden" name={name} value={values[0] ?? ""} {...rest} />
+) : type === "radio" || type === "checkboxes" ? (
+  <fieldset class:list={["pf-field", "pf-group", className]} aria-describedby={helpId}>
+    <legend class="pf-label">{text}{required && <span class="pf-req" aria-hidden="true"> *</span>}</legend>
+    {opts.map((o) => (
+      <label class="pf-option">
+        <input type={type === "radio" ? "radio" : "checkbox"} name={name} value={o.value} checked={values.includes(o.value)} required={type === "radio" && required} {...optionAttrs()} />
+        <span>{o.label}</span>
+      </label>
+    ))}
+    {help && <small class="pf-help" id={helpId}>{help}</small>}
+  </fieldset>
+) : type === "checkbox" ? (
+  <div class:list={["pf-field", className]}>
+    <label class="pf-option">
+      <input type="checkbox" id={id} name={name} value={values[0] ?? "yes"} required={required} aria-describedby={helpId} {...rest} />
+      <span>{text}{required && <span class="pf-req" aria-hidden="true"> *</span>}</span>
+    </label>
+    {help && <small class="pf-help" id={helpId}>{help}</small>}
+  </div>
+) : (
+  <div class:list={["pf-field", className]}>
+    <label class="pf-label" for={id}>{text}{required && <span class="pf-req" aria-hidden="true"> *</span>}</label>
+    {type === "textarea" ? (
+      <textarea class="pf-control" id={id} name={name} rows={rows} required={required} placeholder={placeholder} aria-describedby={helpId} {...rest}>{values[0] ?? ""}</textarea>
+    ) : type === "select" ? (
+      <select class="pf-control" id={id} name={name} required={required} aria-describedby={helpId} {...rest}>
+        {placeholder && <option value="" disabled={required} selected={!values.length}>{placeholder}</option>}
+        {opts.map((o) => <option value={o.value} selected={values.includes(o.value)}>{o.label}</option>)}
+      </select>
+    ) : (
+      <input class="pf-control" type={type} id={id} name={name} value={values[0]} required={required} placeholder={placeholder} autocomplete={autocomplete} aria-describedby={helpId} {...rest} />
+    )}
+    {help && <small class="pf-help" id={helpId}>{help}</small>}
+  </div>
+)}
+
+<style>
+  /* Fonts and text colour come from the page; the rest is set through --pf-* custom properties. */
+  .pf-field { display: grid; gap: var(--pf-label-gap, 0.35rem); min-width: 0; margin: 0; padding: 0; border: 0; }
+  .pf-label { padding: 0; font-weight: var(--pf-label-weight, 600); }
+  .pf-req { color: var(--pf-error, #d64545); }
+  .pf-control {
+    box-sizing: border-box; width: 100%; padding: var(--pf-pad, 0.6em 0.75em);
+    font: inherit; color: inherit; background: var(--pf-bg, transparent);
+    border: 1px solid var(--pf-border, color-mix(in srgb, currentColor 35%, transparent));
+    border-radius: var(--pf-radius, 0.5rem);
+  }
+  textarea.pf-control { min-height: 6em; resize: vertical; }
+  .pf-control:focus-visible { outline: 2px solid var(--pf-accent, #2563eb); outline-offset: 1px; }
+  .pf-control[aria-invalid="true"] { border-color: var(--pf-error, #d64545); }
+  .pf-option { display: flex; gap: 0.5em; align-items: baseline; }
+  .pf-option input { margin: 0; accent-color: var(--pf-accent, #2563eb); }
+  .pf-help { font-size: 0.875em; opacity: 0.75; }
+</style>

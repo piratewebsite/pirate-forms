@@ -1,0 +1,177 @@
+---
+// A form that posts to the forms receiver. It is a plain HTML form first: without script the
+// browser posts it and lands on a thank-you page; with script it is sent in place and the
+// result is shown under the button. Who receives it is decided on the receiver, by `id`.
+import Field from "./Field.astro";
+import type { FieldProps } from "./types";
+
+interface Props {
+  /** The form's id in the receiver's forms.json. */
+  id: string;
+  /** Receiver address. Defaults to the PUBLIC_FORMS_ENDPOINT env variable, then forms.piratesocial.app. */
+  endpoint?: string;
+  /** Fields as data. Fields can also be written as children; both can be used together. */
+  fields?: FieldProps[];
+  submitLabel?: string;
+  sendingLabel?: string;
+  successMessage?: string;
+  errorMessage?: string;
+  /** Offered as a mail link when the form cannot be sent. */
+  fallbackEmail?: string;
+  /** Where to go after sending: a path on this site or a full address on it. */
+  redirect?: string;
+  /** Cloudflare Turnstile site key; the form's entry on the receiver holds the matching secret. */
+  turnstileSiteKey?: string;
+  /** Class for the submit button, to use the site's own button style instead of the built-in one. */
+  submitClass?: string;
+  class?: string;
+  [attribute: string]: unknown;
+}
+
+const {
+  id,
+  endpoint = import.meta.env.PUBLIC_FORMS_ENDPOINT ?? "https://forms.piratesocial.app",
+  fields = [],
+  submitLabel = "Send",
+  sendingLabel = "Sending…",
+  successMessage = "Thanks! Your message was sent.",
+  errorMessage = "Sorry, the form could not be sent.",
+  fallbackEmail,
+  redirect,
+  turnstileSiteKey,
+  submitClass,
+  class: className,
+  ...rest
+} = Astro.props;
+
+const action = `${String(endpoint).replace(/\/+$/, "")}/f/${encodeURIComponent(id)}`;
+---
+
+<form
+  class:list={["pf", className]}
+  method="post"
+  action={action}
+  accept-charset="utf-8"
+  data-pf
+  data-pf-success={successMessage}
+  data-pf-error={errorMessage}
+  data-pf-sending={sendingLabel}
+  data-pf-redirect={redirect}
+  data-pf-fallback={fallbackEmail}
+  {...rest}
+>
+  {fields.map((field) => <Field {...field} />)}
+  <slot />
+  {/* People never see this field; scripts that fill in everything do, and the receiver sets those aside. */}
+  <div class="pf-hp" aria-hidden="true">
+    <label>Leave this field empty <input type="text" name="contact_me_by_fax_only" tabindex="-1" autocomplete="off" /></label>
+  </div>
+  {redirect && <input type="hidden" name="_redirect" value={redirect} />}
+  {turnstileSiteKey && <div class="cf-turnstile" data-sitekey={turnstileSiteKey} />}
+  <div class="pf-actions">
+    <slot name="submit"><button type="submit" class={submitClass ?? "pf-submit"}>{submitLabel}</button></slot>
+  </div>
+  <p class="pf-status" role="status" aria-live="polite"></p>
+</form>
+{turnstileSiteKey && <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>}
+
+<script>
+  // One listener for every form on the page (and for pages swapped in by view transitions).
+  const loaded = Date.now();
+
+  function setStatus(form: HTMLFormElement, kind: "ok" | "error" | "", text: string, mailto?: string) {
+    const status = form.querySelector<HTMLElement>(".pf-status");
+    if (!status) return;
+    status.dataset.kind = kind;
+    status.textContent = text;
+    if (mailto) {
+      const link = document.createElement("a");
+      link.href = `mailto:${mailto}`;
+      link.textContent = mailto;
+      status.append(" You can also write to ", link, ".");
+    }
+  }
+
+  function markInvalid(form: HTMLFormElement, names: string[]) {
+    form.querySelectorAll("[aria-invalid]").forEach((el) => el.removeAttribute("aria-invalid"));
+    let first: HTMLElement | null = null;
+    for (const name of names) {
+      for (const el of form.querySelectorAll<HTMLElement>(`[name="${CSS.escape(name)}"]`)) {
+        el.setAttribute("aria-invalid", "true");
+        first ??= el;
+      }
+    }
+    first?.focus();
+  }
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-pf")) return;
+    event.preventDefault();
+    if (form.dataset.pfBusy) return;
+
+    const body = new URLSearchParams();
+    for (const [name, value] of new FormData(form)) if (typeof value === "string") body.append(name, value);
+    body.set("_t", String(Date.now() - loaded));
+    body.set("_page", location.origin + location.pathname);
+    body.delete("_redirect"); // only for the no-script path; here the page moves itself
+
+    const button = form.querySelector<HTMLButtonElement>("button[type=submit], button:not([type])");
+    const label = button?.textContent ?? "";
+    form.dataset.pfBusy = "1";
+    form.setAttribute("aria-busy", "true");
+    if (button) { button.disabled = true; if (form.dataset.pfSending) button.textContent = form.dataset.pfSending; }
+    setStatus(form, "", "");
+    markInvalid(form, []);
+
+    let ok = false;
+    let message = form.dataset.pfError || "";
+    let invalid: string[] = [];
+    let offerMail = true;
+    try {
+      const res = await fetch(form.getAttribute("action") || "", { method: "POST", headers: { Accept: "application/json" }, body });
+      const data = await res.json().catch(() => ({}));
+      ok = res.ok && data.ok === true;
+      if (!ok && typeof data.error === "string") {
+        message = data.error;
+        // The visitor can fix these themselves; a mail link would only distract.
+        offerMail = ![400, 413, 422].includes(res.status);
+      }
+      if (data.fields && typeof data.fields === "object") invalid = Object.keys(data.fields);
+    } catch {
+      // Offline, blocked, or the receiver is down: the default message and the mail link cover it.
+    }
+
+    delete form.dataset.pfBusy;
+    form.removeAttribute("aria-busy");
+    if (button) { button.disabled = false; button.textContent = label; }
+    (window as any).turnstile?.reset?.();
+
+    if (ok) {
+      form.reset();
+      setStatus(form, "ok", form.dataset.pfSuccess || "");
+      form.dispatchEvent(new CustomEvent("pf:sent", { bubbles: true }));
+      if (form.dataset.pfRedirect) location.assign(form.dataset.pfRedirect);
+    } else {
+      setStatus(form, "error", message, offerMail ? form.dataset.pfFallback : undefined);
+      markInvalid(form, invalid);
+    }
+  });
+</script>
+
+<style>
+  .pf { display: grid; gap: var(--pf-gap, 1.1rem); }
+  .pf-hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+  .pf-submit {
+    padding: 0.65em 1.3em; font: inherit; font-weight: 600; cursor: pointer;
+    color: var(--pf-accent-text, #fff); background: var(--pf-accent, #2563eb);
+    border: 0; border-radius: var(--pf-radius, 0.5rem);
+  }
+  .pf-submit:focus-visible { outline: 2px solid var(--pf-accent, #2563eb); outline-offset: 2px; }
+  .pf-submit:disabled { opacity: 0.6; cursor: progress; }
+  .pf-status { margin: 0; padding: 0.6em 0.9em; border-left: 3px solid currentColor; }
+  .pf-status:empty { display: none; }
+  .pf-status[data-kind="ok"] { border-left-color: var(--pf-ok, #2e9e55); }
+  .pf-status[data-kind="error"] { border-left-color: var(--pf-error, #d64545); }
+  .pf-status :global(a) { color: inherit; }
+</style>

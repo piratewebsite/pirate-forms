@@ -1,0 +1,44 @@
+---
+// The pirate theme's contact form, delivered through the forms receiver instead of Netlify
+// Forms. The theme renders this in place of its own <form> when this package is installed
+// and a Pirate Forms ID is set, and hands over its Form Settings so the same fields appear.
+// File uploads and reCAPTCHA belong to Netlify Forms and are left out here.
+import Form from "../src/Form.astro";
+import type { FieldProps } from "../src/types";
+
+interface Props {
+  /** The site's form id on the receiver. */
+  formId: string;
+  /** The theme's Form Settings entry (content/formSettings). */
+  settings?: Record<string, any>;
+  endpoint?: string;
+}
+
+const { formId, settings = {}, endpoint } = Astro.props;
+
+const on = (key: string, fallback: boolean) => settings[key] ?? fallback;
+// An extra field is sent under its own label ("Company" arrives as "Company"), not "extraField".
+const named = (label: string, fallback: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || fallback;
+const extra = (label: string | undefined, fallback: string): FieldProps => ({ name: named(label ?? "", fallback), label: label || "Extra Field" });
+
+const fields = [
+  on("showName", true) && { name: "name", label: "Your Name" },
+  { name: "email", type: "email", label: "Your Email", required: true },
+  on("showPhone", true) && { name: "phone", type: "tel", label: "Your Phone" },
+  on("showExtraField", false) && extra(settings.extraFieldLabel, "extra_field"),
+  on("showExtraField2", false) && extra(settings.extraFieldLabel2, "extra_field_2"),
+  on("showMessage", true) && { name: "message", type: "textarea", label: "Message", rows: 8 },
+].filter(Boolean) as FieldProps[];
+---
+
+<Form id={formId} endpoint={endpoint} fields={fields} submitLabel="Send Message" redirect="/thanks/" class="pirate-contact" />
+
+<style>
+  /* Colours come from the theme's own variables. */
+  .pirate-contact {
+    width: 100%; max-width: 500px; margin: 0 auto; padding: 5vh 0 0;
+    --pf-accent: var(--theme-header, #2563eb);
+    --pf-border: var(--theme-accent2, currentColor);
+    --pf-radius: 5px;
+  }
+</style>

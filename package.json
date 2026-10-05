@@ -1,0 +1,30 @@
+{
+  "name": "pirate-forms",
+  "version": "0.1.0",
+  "description": "Astro form components for static sites, and a contact form plugin for the pirate theme. Forms post to a forms receiver that emails each submission.",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./Form.astro": "./src/Form.astro",
+    "./Field.astro": "./src/Field.astro",
+    "./pirate/ContactForm.astro": "./pirate/ContactForm.astro"
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "pirate"
+  ],
+  "keywords": [
+    "astro-component",
+    "withastro",
+    "forms",
+    "contact-form"
+  ],
+  "peerDependencies": {
+    "astro": ">=5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/piratewebsite/pirate-forms.git"
+  }
+}
